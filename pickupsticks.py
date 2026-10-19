@@ -81,6 +81,16 @@ def validate_date_range(start_date, end_date):
         raise ValueError("TikTok Research API date ranges cannot exceed 30 days")
 
 
+def parse_page_size(value):
+    try:
+        size = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer from 1 to 100") from exc
+    if not 1 <= size <= 100:
+        raise argparse.ArgumentTypeError("must be an integer from 1 to 100")
+    return size
+
+
 class TikTokResearchClient:
     def __init__(self, access_token):
         self.access_token = access_token
@@ -106,7 +116,11 @@ class TikTokResearchClient:
         except (TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise APIError(f"Could not read a valid TikTok API response: {exc}") from None
 
+        if not isinstance(payload, dict):
+            raise APIError("TikTok API returned an unexpected response")
         error = payload.get("error", {})
+        if not isinstance(error, dict):
+            raise APIError("TikTok API returned an unexpected error response")
         if error.get("code") not in (None, "ok"):
             message = error.get("message") or "request failed"
             raise APIError(f"TikTok API error: {message}")
@@ -187,9 +201,9 @@ def build_parser():
     posts_parser.add_argument("--end-date", required=True, help="YYYYMMDD")
     posts_parser.add_argument(
         "--max-count",
-        type=int,
+        type=parse_page_size,
         default=100,
-        choices=range(1, 101),
+        metavar="1-100",
         help="videos per API page (1–100; default: 100)",
     )
     return parser
