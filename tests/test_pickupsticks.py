@@ -6,6 +6,7 @@ from pickupsticks import (
     TikTokResearchClient,
     ensure_not_excluded,
     normalize_username,
+    validate_record_username,
     validate_date_range,
 )
 
@@ -21,6 +22,14 @@ class UsernameTests(unittest.TestCase):
     def test_excluded_username_comparison_is_case_insensitive(self):
         with self.assertRaisesRegex(ValueError, "excluded account"):
             ensure_not_excluded("MyHandle", "myhandle")
+
+    def test_rejects_video_returned_for_excluded_account(self):
+        with self.assertRaisesRegex(ValueError, "excluded account"):
+            validate_record_username({"username": "myhandle"}, "creator", "MyHandle")
+
+    def test_rejects_records_without_creator_username(self):
+        with self.assertRaisesRegex(APIError, "omitted the creator username"):
+            validate_record_username({"id": "1"}, "creator", "myhandle")
 
 
 class DateRangeTests(unittest.TestCase):

@@ -59,6 +59,16 @@ def ensure_not_excluded(username, excluded_username):
         raise ValueError("refusing to collect the excluded account")
 
 
+def validate_record_username(record, requested_username, excluded_username):
+    record_username = record.get("username")
+    if not isinstance(record_username, str):
+        raise APIError("TikTok API response omitted the creator username; refusing to save it")
+    record_username = normalize_username(record_username)
+    ensure_not_excluded(record_username, excluded_username)
+    if record_username.casefold() != requested_username.casefold():
+        raise APIError("TikTok API returned a different creator; refusing to save it")
+
+
 def validate_date_range(start_date, end_date):
     try:
         start = datetime.strptime(start_date, "%Y%m%d").date()
@@ -81,7 +91,7 @@ class TikTokResearchClient:
             url,
             data=json.dumps(body).encode("utf-8"),
             headers={
-                "Authorization": f"******",
+                "Authorization": "Bearer " + self.access_token,
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -198,19 +208,19 @@ def main(argv=None):
         if not access_token:
             raise ValueError("set TIKTOK_RESEARCH_ACCESS_TOKEN to an approved Research API token")
         client = TikTokResearchClient(access_token)
-        records = (
-            [{"record_type": "creator", **client.creator(username)}]
-            if args.command == "creator"
-            else (
-                {"record_type": "post", **video}
+        if args.command == "creator":
+            creator = client.creator(username)
+            validate_record_username(creator, username, excluded_username)
+            records = [{"record_type": "creator", **creator}]
+        else:
+            def validated_posts():
                 for video in client.posts(
-                    username,
-                    args.start_date,
-                    args.end_date,
-                    args.max_count,
-                )
-            )
-        )
+                    username, args.start_date, args.end_date, args.max_count
+                ):
+                    validate_record_username(video, username, excluded_username)
+                    yield {"record_type": "post", **video}
+
+            records = validated_posts()
         count = write_jsonl(args.output, records)
     except (APIError, OSError, ValueError) as exc:
         parser.exit(1, f"error: {exc}\n")
